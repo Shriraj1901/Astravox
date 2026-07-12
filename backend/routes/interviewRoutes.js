@@ -1,0 +1,19 @@
+const express = require('express');
+const {
+  startInterview,
+  submitAnswer,
+  endInterview,
+  getMyInterviews,
+  getInterviewById,
+} = require('../controllers/interviewController');
+const { protect } = require('../middleware/authMiddleware');
+
+const router = express.Router();
+
+router.post('/start', protect, startInterview);
+router.post('/:id/answer', protect, submitAnswer);
+router.post('/:id/end', protect, endInterview);
+router.get('/', protect, getMyInterviews);
+router.get('/:id', protect, getInterviewById);
+
+module.exports = router;
