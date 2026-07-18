@@ -1,0 +1,21 @@
+[33mcommit 00400b3c040707737c8f32c567d8a122c33bc9cf[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m
+Author: shreeraj <shreerajjadhav19@gmail.com>
+Date:   Sun Jul 12 22:03:00 2026 +0530
+
+    Initial backend: auth, interviews, AI integration
+
+ .gitignore                                 |    4 [32m+[m
+ backend/config/db.js                       |   13 [32m+[m
+ backend/controllers/authController.js      |  189 [32m++++[m
+ backend/controllers/interviewController.js |  152 [32m+++[m
+ backend/middleware/authMiddleware.js       |   28 [32m+[m
+ backend/models/Interview.js                |   42 [32m+[m
+ backend/models/User.js                     |   42 [32m+[m
+ backend/package-lock.json                  | 1600 [32m++++++++++++++++++++++++++++[m
+ backend/package.json                       |   24 [32m+[m
+ backend/routes/authRoutes.js               |   23 [32m+[m
+ backend/routes/interviewRoutes.js          |   19 [32m+[m
+ backend/server.js                          |   21 [32m+[m
+ backend/services/aiService.js              |   68 [32m++[m
+ backend/utils/generateToken.js             |    9 [32m+[m
+ 14 files changed, 2234 insertions(+)
