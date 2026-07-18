@@ -14,6 +14,8 @@ const InterviewSession = () => {
   const [loadingInterview, setLoadingInterview] = useState(true);
   const [error, setError] = useState('');
   const [seconds, setSeconds] = useState(0);
+  const [tabWarning, setTabWarning] = useState(false);
+  const [blurCount, setBlurCount] = useState(0);
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -44,6 +46,15 @@ const InterviewSession = () => {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [interview]);
+
+  useEffect(() => {
+    const handleBlur = () => {
+      setBlurCount((c) => c + 1);
+      setTabWarning(true);
+    };
+    window.addEventListener('blur', handleBlur);
+    return () => window.removeEventListener('blur', handleBlur);
+  }, []);
 
   const formatTime = (totalSeconds) => {
     const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
@@ -94,6 +105,18 @@ const InterviewSession = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-[240px_1fr_240px] gap-6">
+      {tabWarning && (
+        <div className="lg:col-span-3 -mb-2 px-4 py-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm flex items-center justify-between">
+          <span>
+            You switched away from this tab. For the most accurate feedback, try to stay focused
+            on the interview.
+          </span>
+          <button onClick={() => setTabWarning(false)} className="text-amber-400 hover:text-amber-300 ml-4">
+            ✕
+          </button>
+        </div>
+      )}
+
       <aside className="bg-slate-900 border border-slate-800 rounded-xl p-5 h-fit">
         <p className="text-xs text-cyan-400 uppercase tracking-wide mb-4">AI Interviewer</p>
         <div className="space-y-3 text-sm">

@@ -13,6 +13,8 @@ import InterviewDetail from './pages/InterviewDetail';
 import Profile from './pages/Profile';
 import ForgotPassword from './pages/ForgotPassword';
 import Landing from './pages/Landing';
+import InterviewPrep from './pages/InterviewPrep';
+import NotFound from './pages/NotFound';
 
 function App() {
   return (
@@ -38,6 +40,8 @@ function App() {
             <Route path="/profile" element={<Profile />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/" element={<Landing />} />
+            <Route path="/interview/:id/prep" element={<InterviewPrep />} />
+            <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
       </BrowserRouter>

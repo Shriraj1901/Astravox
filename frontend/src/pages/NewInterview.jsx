@@ -24,7 +24,7 @@ const NewInterview = () => {
 
     try {
       const res = await api.post('/interviews/start', { company, role, difficulty });
-      navigate(`/interview/${res.data._id}`);
+      navigate(`/interview/${res.data._id}/prep`, { state: { interview: res.data } });  
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to start interview');
       setLoading(false);

@@ -2,6 +2,42 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 
+const getAchievements = (user) => {
+  const achievements = [
+    {
+      id: 'first',
+      label: 'First Interview',
+      desc: 'Complete your first mock interview',
+      unlocked: (user?.totalInterviews ?? 0) >= 1,
+    },
+    {
+      id: 'five',
+      label: 'Getting Consistent',
+      desc: 'Complete 5 mock interviews',
+      unlocked: (user?.totalInterviews ?? 0) >= 5,
+    },
+    {
+      id: 'ten',
+      label: 'Dedicated Practicer',
+      desc: 'Complete 10 mock interviews',
+      unlocked: (user?.totalInterviews ?? 0) >= 10,
+    },
+    {
+      id: 'score70',
+      label: 'Strong Performer',
+      desc: 'Reach an average score of 70+',
+      unlocked: (user?.averageScore ?? 0) >= 70,
+    },
+    {
+      id: 'score90',
+      label: 'Interview Ready',
+      desc: 'Reach an average score of 90+',
+      unlocked: (user?.averageScore ?? 0) >= 90,
+    },
+  ];
+  return achievements;
+};
+
 const Profile = () => {
   const { user, setUser } = useAuth();
 
@@ -147,6 +183,28 @@ const Profile = () => {
             {pwSaving ? 'Updating...' : 'Update Password'}
           </button>
         </form>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 mt-6">
+          <p className="text-white font-medium mb-4">Achievements</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {getAchievements(user).map((a) => (
+              <div
+                key={a.id}
+                className={`rounded-lg p-4 border ${
+                  a.unlocked
+                    ? 'bg-cyan-500/5 border-cyan-500/30'
+                    : 'bg-slate-800/50 border-slate-800'
+                }`}
+              >
+                <p className={`text-sm font-medium ${a.unlocked ? 'text-cyan-400' : 'text-slate-500'}`}>
+                  {a.unlocked ? '✓ ' : '○ '}
+                  {a.label}
+                </p>
+                <p className="text-xs text-slate-500 mt-1">{a.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
