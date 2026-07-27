@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
+const { sendEmail } = require('../services/emailService');
 
 // @route  POST /api/auth/signup
 const signup = async (req, res) => {
@@ -27,6 +28,12 @@ const signup = async (req, res) => {
     });
 
     const token = generateToken(user._id);
+
+    sendEmail({
+      to: user.email,
+      subject: 'Welcome to AstraVox',
+      html: `<p>Hi ${user.name},</p><p>Welcome to AstraVox! Your account has been created successfully. Start practicing your interview skills today.</p>`,
+    }).catch((err) => console.error('Welcome email failed:', err.message));
 
     res.status(201).json({
       _id: user._id,
@@ -134,18 +141,34 @@ const forgotPassword = async (req, res) => {
     const { email } = req.body;
     const user = await User.findOne({ email });
 
+    // Always respond the same way, whether or not the user exists —
+    // this prevents attackers from using this endpoint to discover registered emails
     if (!user) {
-      return res.status(404).json({ message: 'No user found with this email' });
+      return res.status(200).json({
+        message: 'If an account with that email exists, a reset link has been sent.',
+      });
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
     user.resetPasswordToken = resetToken;
-    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000; // 15 minutes
+    user.resetPasswordExpires = Date.now() + 15 * 60 * 1000;
     await user.save();
 
+    const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${resetToken}`;
+
+    await sendEmail({
+      to: user.email,
+      subject: 'Reset your AstraVox password',
+      html: `
+        <p>Hi ${user.name},</p>
+        <p>We received a request to reset your AstraVox password. Click the link below to set a new password:</p>
+        <p><a href="${resetUrl}">${resetUrl}</a></p>
+        <p>This link will expire in 15 minutes. If you didn't request this, you can safely ignore this email.</p>
+      `,
+    });
+
     res.status(200).json({
-      message: 'Password reset token generated',
-      resetToken, // In production, this would be emailed instead of returned here
+      message: 'If an account with that email exists, a reset link has been sent.',
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });

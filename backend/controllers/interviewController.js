@@ -41,7 +41,7 @@ const startInterview = async (req, res) => {
 // @route  POST /api/interviews/:id/answer
 const submitAnswer = async (req, res) => {
   try {
-    const { answer } = req.body;
+    const { answer, speechMetrics } = req.body;
     const interview = await Interview.findById(req.params.id);
 
     if (!interview) {
@@ -58,6 +58,9 @@ const submitAnswer = async (req, res) => {
 
     const lastQA = interview.qaPairs[interview.qaPairs.length - 1];
     lastQA.answer = answer;
+    if (speechMetrics) {
+      lastQA.speechMetrics = speechMetrics;
+    }
 
     if (interview.qaPairs.length >= MAX_QUESTIONS) {
       interview.status = 'completed';
@@ -117,6 +120,7 @@ const endInterview = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
 // @route  GET /api/interviews
 const getMyInterviews = async (req, res) => {
   try {
@@ -149,4 +153,33 @@ const getInterviewById = async (req, res) => {
   }
 };
 
-module.exports = { startInterview, submitAnswer, endInterview, getMyInterviews, getInterviewById };
+// @route  POST /api/interviews/:id/focus-loss
+const recordFocusLoss = async (req, res) => {
+  try {
+    const interview = await Interview.findById(req.params.id);
+
+    if (!interview) {
+      return res.status(404).json({ message: 'Interview not found' });
+    }
+
+    if (interview.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to access this interview' });
+    }
+
+    interview.focusLossCount += 1;
+    await interview.save();
+
+    res.status(200).json({ focusLossCount: interview.focusLossCount });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+module.exports = {
+  startInterview,
+  submitAnswer,
+  endInterview,
+  getMyInterviews,
+  getInterviewById,
+  recordFocusLoss,
+};

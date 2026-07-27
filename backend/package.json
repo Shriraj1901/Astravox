@@ -15,8 +15,10 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.6.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.7.4",
+    "nodemailer": "^9.0.3",
     "openai": "^6.46.0"
   },
   "devDependencies": {

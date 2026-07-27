@@ -15,14 +15,19 @@ import ForgotPassword from './pages/ForgotPassword';
 import Landing from './pages/Landing';
 import InterviewPrep from './pages/InterviewPrep';
 import NotFound from './pages/NotFound';
+import InterviewCompleting from './pages/InterviewCompleting';
+import ResetPassword from './pages/ResetPassword';
 
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          <Route path="/" element={<Landing />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           <Route
             element={
@@ -38,11 +43,11 @@ function App() {
             <Route path="/history" element={<InterviewHistory />} />
             <Route path="/history/:id" element={<InterviewDetail />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/" element={<Landing />} />
             <Route path="/interview/:id/prep" element={<InterviewPrep />} />
-            <Route path="*" element={<NotFound />} />
+            <Route path="/interview/:id/completing" element={<InterviewCompleting />} />
           </Route>
+
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
