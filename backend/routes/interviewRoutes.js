@@ -5,6 +5,7 @@ const {
   endInterview,
   getMyInterviews,
   getReadiness,
+  getActivity,
   getInterviewById,
   recordFocusLoss,
 } = require('../controllers/interviewController');
@@ -17,6 +18,7 @@ router.post('/:id/answer', protect, submitAnswer);
 router.post('/:id/end', protect, endInterview);
 router.post('/:id/focus-loss', protect, recordFocusLoss);
 router.get('/readiness', protect, getReadiness);
+router.get('/activity', protect, getActivity);
 router.get('/', protect, getMyInterviews);
 router.get('/:id', protect, getInterviewById);
 

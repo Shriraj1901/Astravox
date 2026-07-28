@@ -33,19 +33,68 @@ const ReadinessRing = ({ score }) => {
   );
 };
 
+const ActivityHeatmap = ({ countsByDay }) => {
+  const days = [];
+  const today = new Date();
+  for (let i = 89; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().split('T')[0];
+    days.push({ key, count: countsByDay[key] || 0 });
+  }
+
+  const weeks = [];
+  for (let i = 0; i < days.length; i += 7) {
+    weeks.push(days.slice(i, i + 7));
+  }
+
+  const intensity = (count) => {
+    if (count === 0) return 'bg-slate-800';
+    if (count === 1) return 'bg-cyan-900';
+    if (count === 2) return 'bg-cyan-700';
+    return 'bg-cyan-400';
+  };
+
+  return (
+    <div className="flex gap-1 overflow-x-auto pb-1">
+      {weeks.map((week, wi) => (
+        <div key={wi} className="flex flex-col gap-1">
+          {week.map((day) => (
+            <div
+              key={day.key}
+              title={`${day.key}: ${day.count} interview${day.count !== 1 ? 's' : ''}`}
+              className={`w-3 h-3 rounded-sm ${intensity(day.count)}`}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const Dashboard = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const [readiness, setReadiness] = useState(null);
+  const [activity, setActivity] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
+
     api
       .get('/interviews/readiness')
       .then((res) => {
         if (!cancelled) setReadiness(res.data);
       })
       .catch(() => {});
+
+    api
+      .get('/interviews/activity')
+      .then((res) => {
+        if (!cancelled) setActivity(res.data);
+      })
+      .catch(() => {});
+
     return () => {
       cancelled = true;
     };
@@ -62,9 +111,18 @@ const Dashboard = () => {
   return (
     <div className="px-6 py-10">
       <div className="max-w-5xl mx-auto">
-        <h2 className="text-3xl font-semibold text-white mb-1">
-          Welcome back, {user?.name?.split(' ')[0]}
-        </h2>
+        <div className="flex items-center justify-between flex-wrap gap-4 mb-1">
+          <h2 className="text-3xl font-semibold text-white">
+            Welcome back, {user?.name?.split(' ')[0]}
+          </h2>
+          {activity && activity.streak > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30">
+              <span className="text-amber-400 text-sm font-medium">
+                🔥 {activity.streak} day streak
+              </span>
+            </div>
+          )}
+        </div>
         <p className="text-slate-400 mb-10">Ready for your next practice interview?</p>
 
         {readiness && readiness.totalInterviews > 0 && (
@@ -90,7 +148,7 @@ const Dashboard = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
             <p className="text-slate-400 text-sm mb-1">Total Interviews</p>
             <p className="text-3xl font-bold text-white">{user?.totalInterviews ?? 0}</p>
@@ -110,6 +168,14 @@ const Dashboard = () => {
             </button>
           </div>
         </div>
+
+        {activity && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+            <p className="text-white font-medium mb-1">Practice Activity</p>
+            <p className="text-slate-400 text-sm mb-4">Last 90 days</p>
+            <ActivityHeatmap countsByDay={activity.countsByDay} />
+          </div>
+        )}
       </div>
     </div>
   );

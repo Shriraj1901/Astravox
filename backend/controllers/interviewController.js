@@ -25,6 +25,43 @@ const calculateReadiness = (scores) => {
   return { readinessScore, consistency, avgScore: Math.round(avg) };
 };
 
+const calculateStreak = (dates) => {
+  if (dates.length === 0) return 0;
+
+  const dayStrings = [...new Set(dates.map((d) => new Date(d).toDateString()))];
+  const sortedDays = dayStrings.map((d) => new Date(d)).sort((a, b) => b - a);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const mostRecent = sortedDays[0];
+  mostRecent.setHours(0, 0, 0, 0);
+
+  if (mostRecent.getTime() !== today.getTime() && mostRecent.getTime() !== yesterday.getTime()) {
+    return 0;
+  }
+
+  let streak = 1;
+  for (let i = 0; i < sortedDays.length - 1; i++) {
+    const current = new Date(sortedDays[i]);
+    current.setHours(0, 0, 0, 0);
+    const next = new Date(sortedDays[i + 1]);
+    next.setHours(0, 0, 0, 0);
+
+    const diffDays = Math.round((current - next) / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 1) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+
+  return streak;
+};
+
 // @route  POST /api/interviews/start
 const startInterview = async (req, res) => {
   try {
@@ -168,16 +205,38 @@ const getReadiness = async (req, res) => {
       status: 'completed',
     }).select('feedback.score createdAt');
 
-    const scores = interviews
-      .map((i) => i.feedback.score)
-      .filter((s) => s != null);
-
+    const scores = interviews.map((i) => i.feedback.score).filter((s) => s != null);
     const result = calculateReadiness(scores);
 
-    res.status(200).json({
-      ...result,
-      totalInterviews: interviews.length,
+    res.status(200).json({ ...result, totalInterviews: interviews.length });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @route  GET /api/interviews/activity
+const getActivity = async (req, res) => {
+  try {
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+    const interviews = await Interview.find({
+      user: req.user._id,
+      status: 'completed',
+      createdAt: { $gte: ninetyDaysAgo },
+    }).select('createdAt');
+
+    const dates = interviews.map((i) => i.createdAt);
+
+    const countsByDay = {};
+    dates.forEach((d) => {
+      const key = new Date(d).toISOString().split('T')[0];
+      countsByDay[key] = (countsByDay[key] || 0) + 1;
     });
+
+    const streak = calculateStreak(dates);
+
+    res.status(200).json({ countsByDay, streak });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -230,6 +289,7 @@ module.exports = {
   endInterview,
   getMyInterviews,
   getReadiness,
+  getActivity,
   getInterviewById,
   recordFocusLoss,
 };
