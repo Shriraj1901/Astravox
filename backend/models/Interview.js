@@ -32,6 +32,11 @@ const interviewSchema = new mongoose.Schema(
       enum: ['Easy', 'Medium', 'Hard'],
       required: true,
     },
+    interviewType: {
+      type: String,
+      enum: ['Technical', 'Behavioral', 'HR', 'Mixed'],
+      default: 'Technical',
+    },
     qaPairs: [questionAnswerSchema],
     status: {
       type: String,

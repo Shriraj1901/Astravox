@@ -20,25 +20,34 @@ const signup = async (req, res) => {
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
+    const verificationToken = crypto.randomBytes(32).toString('hex');
 
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
+      verificationToken,
     });
 
     const token = generateToken(user._id);
+    const verifyUrl = `${process.env.CLIENT_URL}/verify-email?token=${verificationToken}`;
 
     sendEmail({
       to: user.email,
-      subject: 'Welcome to AstraVox',
-      html: `<p>Hi ${user.name},</p><p>Welcome to AstraVox! Your account has been created successfully. Start practicing your interview skills today.</p>`,
-    }).catch((err) => console.error('Welcome email failed:', err.message));
+      subject: 'Verify your AstraVox email',
+      html: `
+        <p>Hi ${user.name},</p>
+        <p>Welcome to AstraVox! Please verify your email address by clicking the link below:</p>
+        <p><a href="${verifyUrl}">${verifyUrl}</a></p>
+        <p>If you didn't create this account, you can safely ignore this email.</p>
+      `,
+    }).catch((err) => console.error('Verification email failed:', err.message));
 
     res.status(201).json({
       _id: user._id,
       name: user.name,
       email: user.email,
+      isVerified: user.isVerified,
       token,
     });
   } catch (error) {
@@ -71,6 +80,7 @@ const login = async (req, res) => {
       _id: user._id,
       name: user.name,
       email: user.email,
+      isVerified: user.isVerified,
       token,
     });
   } catch (error) {
@@ -103,6 +113,7 @@ const updateProfile = async (req, res) => {
       email: updatedUser.email,
       totalInterviews: updatedUser.totalInterviews,
       averageScore: updatedUser.averageScore,
+      isVerified: updatedUser.isVerified,
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -141,8 +152,6 @@ const forgotPassword = async (req, res) => {
     const { email } = req.body;
     const user = await User.findOne({ email });
 
-    // Always respond the same way, whether or not the user exists —
-    // this prevents attackers from using this endpoint to discover registered emails
     if (!user) {
       return res.status(200).json({
         message: 'If an account with that email exists, a reset link has been sent.',
@@ -201,6 +210,61 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// @route  GET /api/auth/verify-email?token=...
+const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    const user = await User.findOne({ verificationToken: token });
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired verification link' });
+    }
+
+    user.isVerified = true;
+    user.verificationToken = null;
+    await user.save();
+
+    res.status(200).json({ message: 'Email verified successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @route  POST /api/auth/resend-verification
+const resendVerification = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ message: 'Email is already verified' });
+    }
+
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    user.verificationToken = verificationToken;
+    await user.save();
+
+    const verifyUrl = `${process.env.CLIENT_URL}/verify-email?token=${verificationToken}`;
+
+    await sendEmail({
+      to: user.email,
+      subject: 'Verify your AstraVox email',
+      html: `
+        <p>Hi ${user.name},</p>
+        <p>Please verify your email address by clicking the link below:</p>
+        <p><a href="${verifyUrl}">${verifyUrl}</a></p>
+      `,
+    });
+
+    res.status(200).json({ message: 'Verification email sent' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 module.exports = {
   signup,
   login,
@@ -209,4 +273,6 @@ module.exports = {
   changePassword,
   forgotPassword,
   resetPassword,
+  verifyEmail,
+  resendVerification,
 };

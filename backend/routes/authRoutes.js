@@ -8,17 +8,20 @@ const {
   changePassword,
   forgotPassword,
   resetPassword,
+  verifyEmail,
+  resendVerification,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 
-const router = express.Router();
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // limit each IP to 10 requests per window for these routes
+  windowMs: 15 * 60 * 1000,
+  max: 10,
   message: { message: 'Too many attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+const router = express.Router();
 
 router.post('/signup', authLimiter, signup);
 router.post('/login', authLimiter, login);
@@ -27,5 +30,7 @@ router.put('/profile', protect, updateProfile);
 router.put('/change-password', protect, changePassword);
 router.post('/forgot-password', authLimiter, forgotPassword);
 router.post('/reset-password', resetPassword);
+router.get('/verify-email', verifyEmail);
+router.post('/resend-verification', protect, resendVerification);
 
 module.exports = router;
