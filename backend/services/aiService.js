@@ -12,16 +12,24 @@ const typeGuidance = {
   Mixed: 'Blend technical, behavioral, and HR-style questions across the interview, similar to how a real multi-round interview loop would combine different question types.',
 };
 
-const generateNextQuestion = async ({ company, role, difficulty, interviewType, qaPairs }) => {
+const generateNextQuestion = async ({ company, role, difficulty, interviewType, qaPairs, resumeContext }) => {
   const conversationSoFar = qaPairs
     .map((qa, i) => `Q${i + 1}: ${qa.question}\nA${i + 1}: ${qa.answer}`)
     .join('\n\n');
 
   const guidance = typeGuidance[interviewType] || typeGuidance.Technical;
 
+  const resumeNote = resumeContext
+    ? `\n\nThe candidate has provided their resume. Known skills: ${resumeContext.skills?.join(', ') || 'none listed'}.
+Resume summary: ${resumeContext.summary || 'not available'}.
+When natural, tailor questions to their actual background (e.g., ask about a technology or
+project area they've listed) instead of purely generic questions — but don't force it into
+every question, and don't assume anything not actually reflected in their resume.`
+    : '';
+
   const systemPrompt = `You are a professional interviewer conducting a mock interview
 for a ${role} position at ${company}. Base difficulty level: ${difficulty}.
-Interview type: ${interviewType || 'Technical'}. ${guidance}
+Interview type: ${interviewType || 'Technical'}. ${guidance}${resumeNote}
 
 Ask one interview question at a time. Base each new question naturally on the candidate's
 previous answers where relevant.
@@ -148,4 +156,39 @@ Respond with ONLY valid JSON, no markdown, no extra text, in exactly this shape:
   return JSON.parse(cleaned);
 };
 
-module.exports = { generateNextQuestion, generateFeedback };
+const analyzeResume = async (resumeText) => {
+  const systemPrompt = `You are a career coach analyzing a resume. Based on the resume text
+provided, extract:
+- A list of concrete technical and professional skills mentioned
+- 2-4 genuine strengths visible in the resume (based on actual content, not generic praise)
+- 2-4 gaps or areas that could be strengthened (missing details, unclear impact, weak sections)
+- A 2-3 sentence honest summary of the candidate's profile
+
+Be specific and grounded in what's actually in the text — do not invent skills or experience
+that isn't mentioned. If the resume is very sparse or unclear, say so honestly rather than
+inventing substance.
+
+Respond with ONLY valid JSON, no markdown, no extra text, in exactly this shape:
+{
+  "skills": ["...", "..."],
+  "strengths": ["...", "..."],
+  "gaps": ["...", "..."],
+  "summary": "..."
+}`;
+
+  const response = await client.chat.completions.create({
+    model: process.env.OPENAI_MODEL,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Resume text:\n\n${resumeText.slice(0, 8000)}` },
+    ],
+    temperature: 0.4,
+  });
+
+  const raw = response.choices[0].message.content.trim();
+  const cleaned = raw.replace(/```json|```/g, '').trim();
+
+  return JSON.parse(cleaned);
+};
+
+module.exports = { generateNextQuestion, generateFeedback, analyzeResume };

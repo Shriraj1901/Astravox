@@ -63,6 +63,7 @@ const calculateStreak = (dates) => {
 };
 
 // @route  POST /api/interviews/start
+// @route  POST /api/interviews/start
 const startInterview = async (req, res) => {
   try {
     const { company, role, difficulty, interviewType } = req.body;
@@ -70,6 +71,9 @@ const startInterview = async (req, res) => {
     if (!company || !role || !difficulty) {
       return res.status(400).json({ message: 'Please provide company, role and difficulty' });
     }
+
+    const currentUser = await User.findById(req.user._id).select('resume');
+    const resumeContext = currentUser?.resume?.rawText ? currentUser.resume.analysis : null;
 
     const interview = await Interview.create({
       user: req.user._id,
@@ -87,6 +91,7 @@ const startInterview = async (req, res) => {
       difficulty,
       interviewType: interview.interviewType,
       qaPairs: [],
+      resumeContext,
     });
 
     interview.qaPairs.push({ question: firstQuestion, answer: '' });
@@ -128,12 +133,16 @@ const submitAnswer = async (req, res) => {
       return res.status(200).json({ interview, done: true });
     }
 
+    const currentUser = await User.findById(req.user._id).select('resume');
+    const resumeContext = currentUser?.resume?.rawText ? currentUser.resume.analysis : null;
+
     const nextQuestion = await generateNextQuestion({
       company: interview.company,
       role: interview.role,
       difficulty: interview.difficulty,
       interviewType: interview.interviewType,
       qaPairs: interview.qaPairs,
+      resumeContext,
     });
 
     interview.qaPairs.push({ question: nextQuestion, answer: '' });

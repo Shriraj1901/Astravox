@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
 
@@ -51,6 +51,27 @@ const Profile = () => {
   const [pwError, setPwError] = useState('');
   const [pwSaving, setPwSaving] = useState(false);
 
+  const [resume, setResume] = useState(null);
+  const [resumeLoading, setResumeLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [resumeError, setResumeError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get('/resume')
+      .then((res) => {
+        if (!cancelled) setResume(res.data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setResumeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleNameUpdate = async (e) => {
     e.preventDefault();
     setNameMsg('');
@@ -80,6 +101,38 @@ const Profile = () => {
       setPwError(err.response?.data?.message || 'Failed to change password');
     } finally {
       setPwSaving(false);
+    }
+  };
+
+  const handleResumeUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setResumeError('');
+    setUploading(true);
+
+    const formData = new FormData();
+    formData.append('resume', file);
+
+    try {
+      const res = await api.post('/resume/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setResume(res.data.resume);
+    } catch (err) {
+      setResumeError(err.response?.data?.message || 'Failed to upload resume');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleResumeDelete = async () => {
+    try {
+      await api.delete('/resume');
+      setResume(null);
+    } catch {
+      setResumeError('Failed to remove resume');
     }
   };
 
@@ -149,7 +202,7 @@ const Profile = () => {
 
         <form
           onSubmit={handlePasswordChange}
-          className="bg-slate-900 border border-slate-800 rounded-xl p-6"
+          className="bg-slate-900 border border-slate-800 rounded-xl p-6 mb-6"
         >
           <p className="text-white font-medium mb-4">Change Password</p>
 
@@ -184,7 +237,79 @@ const Profile = () => {
           </button>
         </form>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 mt-6">
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 mb-6">
+          <p className="text-white font-medium mb-1">Resume</p>
+          <p className="text-slate-400 text-sm mb-4">
+            Upload your resume so interview questions can be tailored to your actual background.
+          </p>
+
+          {resumeError && <p className="text-sm mb-4 text-red-400">{resumeError}</p>}
+
+          {resumeLoading ? (
+            <p className="text-slate-500 text-sm">Loading...</p>
+          ) : resume?.fileName ? (
+            <div>
+              <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <div>
+                  <p className="text-white text-sm">{resume.fileName}</p>
+                  <p className="text-slate-500 text-xs">
+                    Uploaded {new Date(resume.uploadedAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <button
+                  onClick={handleResumeDelete}
+                  className="text-sm text-red-400 hover:text-red-300"
+                >
+                  Remove
+                </button>
+              </div>
+
+              {resume.analysis?.summary && (
+                <div className="bg-slate-800/50 rounded-lg p-4 mb-3">
+                  <p className="text-xs text-cyan-400 mb-1.5">Summary</p>
+                  <p className="text-slate-300 text-sm leading-relaxed">{resume.analysis.summary}</p>
+                </div>
+              )}
+
+              {resume.analysis?.skills?.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-xs text-slate-500 mb-2">Detected Skills</p>
+                  <div className="flex flex-wrap gap-2">
+                    {resume.analysis.skills.map((s, i) => (
+                      <span
+                        key={i}
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 text-xs border border-slate-700"
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <label className="inline-block mt-2 text-sm text-cyan-400 hover:underline cursor-pointer">
+                Upload a different resume
+                <input type="file" accept="application/pdf" onChange={handleResumeUpload} className="hidden" />
+              </label>
+            </div>
+          ) : (
+            <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-700 rounded-lg py-8 cursor-pointer hover:border-slate-600 transition">
+              <span className="text-slate-400 text-sm mb-1">
+                {uploading ? 'Uploading and analyzing...' : 'Click to upload your resume (PDF)'}
+              </span>
+              <span className="text-slate-600 text-xs">Max 5MB</span>
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={handleResumeUpload}
+                disabled={uploading}
+                className="hidden"
+              />
+            </label>
+          )}
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
           <p className="text-white font-medium mb-4">Achievements</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {getAchievements(user).map((a) => (

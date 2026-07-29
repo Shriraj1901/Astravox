@@ -43,6 +43,17 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    resume: {
+      fileName: { type: String, default: null },
+      rawText: { type: String, default: null },
+      uploadedAt: { type: Date, default: null },
+      analysis: {
+        skills: [{ type: String }],
+        strengths: [{ type: String }],
+        gaps: [{ type: String }],
+        summary: { type: String, default: '' },
+      },
+    },
   },
   { timestamps: true }
 );
