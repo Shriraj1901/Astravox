@@ -9,6 +9,11 @@ const interviewRoutes = require('./routes/interviewRoutes');
 const resumeRoutes = require('./routes/resumeRoutes');
 
 const app = express();
+const app = express();
+
+app.set('trust proxy', 1);
+
+connectDB();
 
 connectDB();
 
