@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const path = require('path');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const interviewRoutes = require('./routes/interviewRoutes');
@@ -11,9 +12,21 @@ const app = express();
 
 connectDB();
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      connectSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+}));
+
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
 app.use(express.json());
+
 app.use('/api/resume', resumeRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/interviews', interviewRoutes);
@@ -22,8 +35,7 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'AstraVox API is running' });
 });
 
-const path = require('path');
-
+// Serve frontend build
 app.use(express.static(path.join(__dirname, '../frontend/dist')));
 
 app.get('/*splat', (req, res) => {
