@@ -1,6 +1,25 @@
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 const User = require('../models/User');
 const { analyzeResume } = require('../services/aiService');
+
+const MAX_RESUME_CHARS = 5000;
+
+const INJECTION_PATTERNS = [
+  /ignore (all|previous|the above)\s+instructions/gi,
+  /disregard (all|previous|the above)\s+instructions/gi,
+  /you are now/gi,
+  /^system:/gim,
+  /^assistant:/gim,
+  /new instructions:/gi,
+];
+
+const sanitizeResumeText = (text) => {
+  let cleaned = text;
+  INJECTION_PATTERNS.forEach((pattern) => {
+    cleaned = cleaned.replace(pattern, '[removed]');
+  });
+  return cleaned.slice(0, MAX_RESUME_CHARS);
+};
 
 // @route  POST /api/resume/upload
 const uploadResume = async (req, res) => {
@@ -13,14 +32,18 @@ const uploadResume = async (req, res) => {
       return res.status(400).json({ message: 'Only PDF files are supported' });
     }
 
-    const parsed = await pdfParse(req.file.buffer);
-    const rawText = parsed.text.trim();
+    const parser = new PDFParse({ data: req.file.buffer });
+    const parsed = await parser.getText();
+    await parser.destroy();
+    const extractedText = parsed.text.trim();
 
-    if (!rawText || rawText.length < 50) {
+    if (!extractedText || extractedText.length < 50) {
       return res.status(400).json({
         message: 'Could not extract enough text from this PDF. Please try a different file.',
       });
     }
+
+    const rawText = sanitizeResumeText(extractedText);
 
     const analysis = await analyzeResume(rawText);
 
