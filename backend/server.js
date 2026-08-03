@@ -18,10 +18,11 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      connectSrc: ["'self'"],
+      connectSrc: ["'self'", process.env.CLIENT_URL, 'https://cdn.jsdelivr.net'],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
+      mediaSrc: ["'self'", "blob:"],
     },
   },
 }));
