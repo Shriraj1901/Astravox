@@ -1,6 +1,7 @@
 const { PDFParse } = require('pdf-parse');
 const User = require('../models/User');
 const { analyzeResume } = require('../services/aiService');
+const serverError = require('../utils/serverError');
 
 const MAX_RESUME_CHARS = 5000;
 
@@ -32,10 +33,18 @@ const uploadResume = async (req, res) => {
       return res.status(400).json({ message: 'Only PDF files are supported' });
     }
 
-    const parser = new PDFParse({ data: req.file.buffer });
-    const parsed = await parser.getText();
-    await parser.destroy();
-    const extractedText = parsed.text.trim();
+    let extractedText;
+    try {
+      const parser = new PDFParse({ data: req.file.buffer });
+      const parsed = await parser.getText();
+      await parser.destroy();
+      extractedText = parsed.text.trim();
+    } catch {
+      // A corrupt or password-protected file is the user's to fix, not a server fault.
+      return res
+        .status(400)
+        .json({ message: 'This PDF could not be read. Please try a different file.' });
+    }
 
     if (!extractedText || extractedText.length < 50) {
       return res.status(400).json({
@@ -58,7 +67,7 @@ const uploadResume = async (req, res) => {
 
     res.status(200).json({ resume: user.resume });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, error);
   }
 };
 
@@ -68,7 +77,7 @@ const getResume = async (req, res) => {
     const user = await User.findById(req.user._id).select('resume');
     res.status(200).json(user.resume);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, error);
   }
 };
 
@@ -85,7 +94,7 @@ const deleteResume = async (req, res) => {
     await user.save();
     res.status(200).json({ message: 'Resume removed' });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, error);
   }
 };
 

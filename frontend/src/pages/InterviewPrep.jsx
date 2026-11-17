@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 
 const tips = [
   'Speak clearly and at a natural pace — the AI is listening and analyzing your delivery.',
@@ -16,7 +16,7 @@ const InterviewPrep = () => {
   const [permissionStatus, setPermissionStatus] = useState('pending');
   const [permissionError, setPermissionError] = useState('');
   const [count, setCount] = useState(5);
-  const [starting, setStarting] = useState(false);
+  const starting = count === 0;
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
@@ -33,9 +33,9 @@ const InterviewPrep = () => {
     setPermissionError('');
 
     try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Media devices unavailable');
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
       setPermissionStatus('granted');
     } catch {
       setPermissionStatus('denied');
@@ -45,10 +45,16 @@ const InterviewPrep = () => {
     }
   };
 
+  // The <video> element is only rendered after permission is granted.
+  useEffect(() => {
+    if (permissionStatus === 'granted' && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [permissionStatus]);
+
   useEffect(() => {
     if (permissionStatus !== 'granted') return;
     if (count === 0) {
-      setStarting(true);
       const t = setTimeout(() => {
         if (streamRef.current) {
           streamRef.current.getTracks().forEach((track) => track.stop());
@@ -62,8 +68,7 @@ const InterviewPrep = () => {
   }, [count, id, interview, navigate, permissionStatus]);
 
   if (!interview) {
-    navigate('/interview/new', { replace: true });
-    return null;
+    return <Navigate to="/interview/new" replace />;
   }
 
   return (

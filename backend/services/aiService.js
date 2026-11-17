@@ -3,6 +3,73 @@ const OpenAI = require('openai');
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
   baseURL: process.env.OPENAI_BASE_URL,
+  // The SDK default is 10 minutes; a user waiting on a question should fail fast instead.
+  timeout: 30 * 1000,
+  maxRetries: 1,
+});
+
+// Any AI failure becomes one error the API layer can show to the user as-is.
+const aiError = (cause) => {
+  console.error('AI request failed:', cause.message);
+  const error = new Error(cause.message);
+  error.status = 503;
+  error.publicMessage = 'The AI interviewer is unavailable right now. Please try again in a moment.';
+  return error;
+};
+
+const chat = async (systemPrompt, userPrompt, temperature) => {
+  let text;
+  try {
+    const response = await client.chat.completions.create({
+      model: process.env.OPENAI_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature,
+    });
+    text = response.choices?.[0]?.message?.content?.trim();
+  } catch (error) {
+    throw aiError(error);
+  }
+  if (!text) throw aiError(new Error('Empty AI response'));
+  return text;
+};
+
+// Models sometimes wrap JSON in markdown fences or add a sentence around it,
+// so take the outermost {...} block rather than trusting the whole reply.
+const parseJsonReply = (raw) => {
+  try {
+    return JSON.parse(raw.match(/\{[\s\S]*\}/)[0]);
+  } catch {
+    throw aiError(new Error(`AI reply was not valid JSON: ${raw.slice(0, 200)}`));
+  }
+};
+
+const toStringList = (value) =>
+  Array.isArray(value)
+    ? value.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim())
+    : [];
+const toText = (value) => (typeof value === 'string' ? value.trim() : '');
+
+// The model's JSON is untrusted input: coerce it to the exact shape the database expects.
+const normalizeFeedback = (data) => {
+  const score = Number(data.score);
+  if (!Number.isFinite(score)) throw aiError(new Error('AI feedback had no numeric score'));
+  return {
+    score: Math.min(100, Math.max(0, Math.round(score))),
+    strengths: toStringList(data.strengths),
+    improvements: toStringList(data.improvements),
+    suggestedTopics: toStringList(data.suggestedTopics),
+    summary: toText(data.summary),
+  };
+};
+
+const normalizeResumeAnalysis = (data) => ({
+  skills: toStringList(data.skills),
+  strengths: toStringList(data.strengths),
+  gaps: toStringList(data.gaps),
+  summary: toText(data.summary),
 });
 
 const typeGuidance = {
@@ -55,16 +122,7 @@ nothing else — no numbering, no preamble.`;
     ? 'Ask the first interview question.'
     : `Here is the conversation so far:\n\n${conversationSoFar}\n\nAsk the next interview question, following the behavior rules above.`;
 
-  const response = await client.chat.completions.create({
-    model: process.env.OPENAI_MODEL,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    temperature: 0.7,
-  });
-
-  return response.choices[0].message.content.trim();
+  return chat(systemPrompt, userPrompt, 0.7);
 };
 
 const formatMetrics = (metrics) => {
@@ -154,19 +212,7 @@ Respond with ONLY valid JSON, no markdown, no extra text, in exactly this shape:
 
   const userPrompt = `Here is the full interview transcript:\n\n${transcript}\n\nProvide the evaluation.`;
 
-  const response = await client.chat.completions.create({
-    model: process.env.OPENAI_MODEL,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    temperature: 0.5,
-  });
-
-  const raw = response.choices[0].message.content.trim();
-  const cleaned = raw.replace(/```json|```/g, '').trim();
-
-  return JSON.parse(cleaned);
+  return normalizeFeedback(parseJsonReply(await chat(systemPrompt, userPrompt, 0.5)));
 };
 
 const analyzeResume = async (resumeText) => {
@@ -192,19 +238,14 @@ Respond with ONLY valid JSON, no markdown, no extra text, in exactly this shape:
   "summary": "..."
 }`;
 
-  const response = await client.chat.completions.create({
-    model: process.env.OPENAI_MODEL,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Resume text:\n\n${resumeText}` },
-    ],
-    temperature: 0.4,
-  });
-
-  const raw = response.choices[0].message.content.trim();
-  const cleaned = raw.replace(/```json|```/g, '').trim();
-
-  return JSON.parse(cleaned);
+  const reply = await chat(systemPrompt, `Resume text:\n\n${resumeText}`, 0.4);
+  return normalizeResumeAnalysis(parseJsonReply(reply));
 };
 
-module.exports = { generateNextQuestion, generateFeedback, analyzeResume };
+module.exports = {
+  generateNextQuestion,
+  generateFeedback,
+  analyzeResume,
+  parseJsonReply,
+  normalizeFeedback,
+};

@@ -10,12 +10,13 @@ const {
   recordFocusLoss,
 } = require('../controllers/interviewController');
 const { protect } = require('../middleware/authMiddleware');
+const { aiLimiter } = require('../middleware/aiLimiter');
 
 const router = express.Router();
 
-router.post('/start', protect, startInterview);
-router.post('/:id/answer', protect, submitAnswer);
-router.post('/:id/end', protect, endInterview);
+router.post('/start', protect, aiLimiter, startInterview);
+router.post('/:id/answer', protect, aiLimiter, submitAnswer);
+router.post('/:id/end', protect, aiLimiter, endInterview);
 router.post('/:id/focus-loss', protect, recordFocusLoss);
 router.get('/readiness', protect, getReadiness);
 router.get('/activity', protect, getActivity);

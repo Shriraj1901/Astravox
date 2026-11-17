@@ -21,10 +21,8 @@ const Signup = () => {
 
     try {
       const res = await api.post('/auth/signup', formData);
-      login(
-        { _id: res.data._id, name: res.data.name, email: res.data.email },
-        res.data.token
-      );
+      const { token, ...userData } = res.data;
+      login(userData, token);
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || 'Something went wrong. Please try again.');
@@ -61,6 +59,8 @@ const Signup = () => {
               value={formData.name}
               onChange={handleChange}
               required
+              maxLength={80}
+              autoComplete="name"
               className="w-full px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition"
               placeholder="Jane Doe"
             />
@@ -74,6 +74,7 @@ const Signup = () => {
               value={formData.email}
               onChange={handleChange}
               required
+              autoComplete="email"
               className="w-full px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition"
               placeholder="jane@example.com"
             />
@@ -87,7 +88,9 @@ const Signup = () => {
               value={formData.password}
               onChange={handleChange}
               required
+              autoComplete="new-password"
               minLength={6}
+              maxLength={128}
               className="w-full px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition"
               placeholder="At least 6 characters"
             />

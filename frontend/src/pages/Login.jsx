@@ -21,10 +21,8 @@ const Login = () => {
 
     try {
       const res = await api.post('/auth/login', formData);
-      login(
-        { _id: res.data._id, name: res.data.name, email: res.data.email },
-        res.data.token
-      );
+      const { token, ...userData } = res.data;
+      login(userData, token);
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || 'Something went wrong. Please try again.');
@@ -61,6 +59,7 @@ const Login = () => {
               value={formData.email}
               onChange={handleChange}
               required
+              autoComplete="email"
               className="w-full px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition"
               placeholder="jane@example.com"
             />
@@ -74,6 +73,7 @@ const Login = () => {
               value={formData.password}
               onChange={handleChange}
               required
+              autoComplete="current-password"
               className="w-full px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition"
               placeholder="Your password"
             />

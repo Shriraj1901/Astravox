@@ -1,8 +1,53 @@
 const Interview = require('../models/Interview');
 const User = require('../models/User');
 const { generateNextQuestion, generateFeedback } = require('../services/aiService');
+const serverError = require('../utils/serverError');
 
 const MAX_QUESTIONS = 5;
+// ~10 minutes of continuous speech; anything longer is not a real answer.
+const MAX_ANSWER_CHARS = 10000;
+const MAX_LABEL_CHARS = 100;
+const DIFFICULTIES = Interview.schema.path('difficulty').enumValues;
+const INTERVIEW_TYPES = Interview.schema.path('interviewType').enumValues;
+const NUMERIC_METRICS = [
+  'durationSeconds',
+  'wordsPerMinute',
+  'fillerWordCount',
+  'pauseCount',
+  'facePresentPercent',
+  'multipleFacesCount',
+  'noFaceCount',
+];
+
+const isLabel = (value) =>
+  typeof value === 'string' && value.trim().length > 0 && value.length <= MAX_LABEL_CHARS;
+
+// Scoping the query to the owner means someone else's interview is simply "not found".
+const findOwnInterview = async (req, res) => {
+  const interview = await Interview.findOne({ _id: req.params.id, user: req.user._id });
+  if (!interview) res.status(404).json({ message: 'Interview not found' });
+  return interview;
+};
+
+const getResumeContext = async (userId) => {
+  const user = await User.findById(userId).select('resume');
+  return user?.resume?.rawText ? user.resume.analysis : null;
+};
+
+// Metrics come from the browser and are quoted in the feedback prompt, so only
+// well-typed values are kept.
+const cleanSpeechMetrics = (metrics) => {
+  if (!metrics || typeof metrics !== 'object') return null;
+  const clean = {};
+  NUMERIC_METRICS.forEach((key) => {
+    if (Number.isFinite(metrics[key]) && metrics[key] >= 0) clean[key] = metrics[key];
+  });
+  if (typeof metrics.dominantExpression === 'string') {
+    clean.dominantExpression =
+      metrics.dominantExpression.replace(/[^a-z]/gi, '').slice(0, 20) || null;
+  }
+  return clean;
+};
 
 const calculateReadiness = (scores) => {
   if (scores.length === 0) {
@@ -63,43 +108,41 @@ const calculateStreak = (dates) => {
 };
 
 // @route  POST /api/interviews/start
-// @route  POST /api/interviews/start
 const startInterview = async (req, res) => {
   try {
-    const { company, role, difficulty, interviewType } = req.body;
+    const { company, role, difficulty, interviewType = 'Technical' } = req.body;
 
-    if (!company || !role || !difficulty) {
+    if (!isLabel(company) || !isLabel(role) || !difficulty) {
       return res.status(400).json({ message: 'Please provide company, role and difficulty' });
     }
+    if (!DIFFICULTIES.includes(difficulty) || !INTERVIEW_TYPES.includes(interviewType)) {
+      return res.status(400).json({ message: 'Invalid difficulty or interview type' });
+    }
 
-    const currentUser = await User.findById(req.user._id).select('resume');
-    const resumeContext = currentUser?.resume?.rawText ? currentUser.resume.analysis : null;
-
-    const interview = await Interview.create({
-      user: req.user._id,
-      company,
-      role,
-      difficulty,
-      interviewType: interviewType || 'Technical',
-      qaPairs: [],
-      status: 'in-progress',
-    });
-
+    // Generate the question before saving, so an AI failure never leaves an
+    // empty, unusable interview behind in the user's history.
     const firstQuestion = await generateNextQuestion({
       company,
       role,
       difficulty,
-      interviewType: interview.interviewType,
+      interviewType,
       qaPairs: [],
-      resumeContext,
+      resumeContext: await getResumeContext(req.user._id),
     });
 
-    interview.qaPairs.push({ question: firstQuestion, answer: '' });
-    await interview.save();
+    const interview = await Interview.create({
+      user: req.user._id,
+      company: company.trim(),
+      role: role.trim(),
+      difficulty,
+      interviewType,
+      qaPairs: [{ question: firstQuestion, answer: '' }],
+      status: 'in-progress',
+    });
 
     res.status(201).json(interview);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, error);
   }
 };
 
@@ -107,24 +150,34 @@ const startInterview = async (req, res) => {
 const submitAnswer = async (req, res) => {
   try {
     const { answer, speechMetrics } = req.body;
-    const interview = await Interview.findById(req.params.id);
 
-    if (!interview) {
-      return res.status(404).json({ message: 'Interview not found' });
+    if (typeof answer !== 'string' || !answer.trim()) {
+      return res.status(400).json({ message: 'Please provide an answer' });
+    }
+    if (answer.length > MAX_ANSWER_CHARS) {
+      return res
+        .status(400)
+        .json({ message: `Answer is too long (maximum ${MAX_ANSWER_CHARS} characters)` });
     }
 
-    if (interview.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Not authorized to access this interview' });
-    }
+    const interview = await findOwnInterview(req, res);
+    if (!interview) return;
 
     if (interview.status === 'completed') {
       return res.status(400).json({ message: 'This interview is already completed' });
     }
 
     const lastQA = interview.qaPairs[interview.qaPairs.length - 1];
-    lastQA.answer = answer;
-    if (speechMetrics) {
-      lastQA.speechMetrics = speechMetrics;
+    if (!lastQA) {
+      return res
+        .status(400)
+        .json({ message: 'This interview has no questions. Please start a new one.' });
+    }
+
+    lastQA.answer = answer.trim();
+    const metrics = cleanSpeechMetrics(speechMetrics);
+    if (metrics) {
+      lastQA.speechMetrics = metrics;
     }
 
     if (interview.qaPairs.length >= MAX_QUESTIONS) {
@@ -133,16 +186,15 @@ const submitAnswer = async (req, res) => {
       return res.status(200).json({ interview, done: true });
     }
 
-    const currentUser = await User.findById(req.user._id).select('resume');
-    const resumeContext = currentUser?.resume?.rawText ? currentUser.resume.analysis : null;
-
+    // Nothing is saved until the next question exists: if the AI call fails,
+    // the client still has the answer and can simply resubmit.
     const nextQuestion = await generateNextQuestion({
       company: interview.company,
       role: interview.role,
       difficulty: interview.difficulty,
       interviewType: interview.interviewType,
       qaPairs: interview.qaPairs,
-      resumeContext,
+      resumeContext: await getResumeContext(req.user._id),
     });
 
     interview.qaPairs.push({ question: nextQuestion, answer: '' });
@@ -150,24 +202,29 @@ const submitAnswer = async (req, res) => {
 
     res.status(200).json({ interview, done: false });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, error);
   }
 };
 
 // @route  POST /api/interviews/:id/end
 const endInterview = async (req, res) => {
   try {
-    const interview = await Interview.findById(req.params.id);
+    const interview = await findOwnInterview(req, res);
+    if (!interview) return;
 
-    if (!interview) {
-      return res.status(404).json({ message: 'Interview not found' });
+    // Idempotent: a retry or duplicate request must not call the model again
+    // or change a score the user has already seen.
+    if (interview.feedback?.score != null) {
+      return res.status(200).json(interview);
     }
 
-    if (interview.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Not authorized to access this interview' });
+    if (!interview.qaPairs.some((qa) => qa.answer)) {
+      return res
+        .status(400)
+        .json({ message: 'Answer at least one question before ending the interview' });
     }
 
-    const feedback = await generateFeedback({
+    interview.feedback = await generateFeedback({
       company: interview.company,
       role: interview.role,
       difficulty: interview.difficulty,
@@ -175,21 +232,25 @@ const endInterview = async (req, res) => {
       qaPairs: interview.qaPairs,
       focusLossCount: interview.focusLossCount,
     });
-
-    interview.feedback = feedback;
     interview.status = 'completed';
     await interview.save();
 
-    const user = await User.findById(req.user._id);
-    const allInterviews = await Interview.find({ user: req.user._id, status: 'completed' });
-    user.totalInterviews = allInterviews.length;
-    user.averageScore =
-      allInterviews.reduce((sum, i) => sum + (i.feedback.score || 0), 0) / allInterviews.length;
-    await user.save();
+    // Only interviews that actually received a score count towards the average.
+    const scored = await Interview.find({
+      user: req.user._id,
+      'feedback.score': { $ne: null },
+    }).select('feedback.score');
+    await User.updateOne(
+      { _id: req.user._id },
+      {
+        totalInterviews: scored.length,
+        averageScore: scored.reduce((sum, i) => sum + i.feedback.score, 0) / scored.length,
+      }
+    );
 
     res.status(200).json(interview);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, error);
   }
 };
 
@@ -202,7 +263,7 @@ const getMyInterviews = async (req, res) => {
 
     res.status(200).json(interviews);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, error);
   }
 };
 
@@ -217,9 +278,9 @@ const getReadiness = async (req, res) => {
     const scores = interviews.map((i) => i.feedback.score).filter((s) => s != null);
     const result = calculateReadiness(scores);
 
-    res.status(200).json({ ...result, totalInterviews: interviews.length });
+    res.status(200).json({ ...result, totalInterviews: scores.length });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, error);
   }
 };
 
@@ -247,48 +308,40 @@ const getActivity = async (req, res) => {
 
     res.status(200).json({ countsByDay, streak });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, error);
   }
 };
 
 // @route  GET /api/interviews/:id
 const getInterviewById = async (req, res) => {
   try {
-    const interview = await Interview.findById(req.params.id);
-
-    if (!interview) {
-      return res.status(404).json({ message: 'Interview not found' });
-    }
-
-    if (interview.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Not authorized to access this interview' });
-    }
+    const interview = await findOwnInterview(req, res);
+    if (!interview) return;
 
     res.status(200).json(interview);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, error);
   }
 };
 
 // @route  POST /api/interviews/:id/focus-loss
 const recordFocusLoss = async (req, res) => {
   try {
-    const interview = await Interview.findById(req.params.id);
+    // Atomic increment: this fires while answers are being saved, and a
+    // read-modify-write here could overwrite or lose a concurrent update.
+    const interview = await Interview.findOneAndUpdate(
+      { _id: req.params.id, user: req.user._id, status: 'in-progress' },
+      { $inc: { focusLossCount: 1 } },
+      { returnDocument: 'after' }
+    ).select('focusLossCount');
 
     if (!interview) {
       return res.status(404).json({ message: 'Interview not found' });
     }
 
-    if (interview.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Not authorized to access this interview' });
-    }
-
-    interview.focusLossCount += 1;
-    await interview.save();
-
     res.status(200).json({ focusLossCount: interview.focusLossCount });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, error);
   }
 };
 
@@ -301,4 +354,6 @@ module.exports = {
   getActivity,
   getInterviewById,
   recordFocusLoss,
+  calculateReadiness,
+  calculateStreak,
 };

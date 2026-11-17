@@ -7,6 +7,28 @@ const roles = ['Frontend Developer', 'Backend Developer', 'Full Stack Developer'
 const difficulties = ['Easy', 'Medium', 'Hard'];
 const interviewTypes = ['Technical', 'Behavioral', 'HR', 'Mixed'];
 
+const OptionGroup = ({ label, options, value, onChange }) => (
+  <div className="mb-8">
+    <p className="text-sm text-slate-400 mb-3">{label}</p>
+    <div className="flex flex-wrap gap-2">
+      {options.map((opt) => (
+        <button
+          key={opt}
+          type="button"
+          onClick={() => onChange(opt)}
+          className={`px-4 py-2 rounded-lg text-sm border transition ${
+            value === opt
+              ? 'bg-cyan-500 border-cyan-500 text-slate-950 font-medium'
+              : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-600'
+          }`}
+        >
+          {opt}
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
 const NewInterview = () => {
   const [company, setCompany] = useState('');
   const [role, setRole] = useState('');
@@ -32,28 +54,6 @@ const NewInterview = () => {
       setLoading(false);
     }
   };
-
-  const OptionGroup = ({ label, options, value, onChange }) => (
-    <div className="mb-8">
-      <p className="text-sm text-slate-400 mb-3">{label}</p>
-      <div className="flex flex-wrap gap-2">
-        {options.map((opt) => (
-          <button
-            key={opt}
-            type="button"
-            onClick={() => onChange(opt)}
-            className={`px-4 py-2 rounded-lg text-sm border transition ${
-              value === opt
-                ? 'bg-cyan-500 border-cyan-500 text-slate-950 font-medium'
-                : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-600'
-            }`}
-          >
-            {opt}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
 
   return (
     <div className="px-6 py-10">

@@ -15,6 +15,9 @@ const countFillerWords = (text) => {
   }, 0);
 };
 
+const SpeechRecognitionAPI =
+  typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+
 const InterviewSession = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -29,7 +32,8 @@ const InterviewSession = () => {
   const [aiThinking, setAiThinking] = useState('');
 
   const [listening, setListening] = useState(false);
-  const [speechSupported, setSpeechSupported] = useState(true);
+  const speechSupported = Boolean(SpeechRecognitionAPI);
+  const [micError, setMicError] = useState('');
   const [aiSpeaking, setAiSpeaking] = useState(false);
   const [cameraStatus, setCameraStatus] = useState('pending');
 
@@ -42,6 +46,14 @@ const InterviewSession = () => {
   const lastQuestionSpokenRef = useRef(null);
   const faceSamplesRef = useRef([]);
   const detectionIntervalRef = useRef(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     loadFaceModels()
@@ -55,7 +67,13 @@ const InterviewSession = () => {
     api
       .get(`/interviews/${id}`)
       .then((res) => {
-        if (!cancelled) setInterview(res.data);
+        if (cancelled) return;
+        // A finished interview has nothing left to answer; show its results instead.
+        if (res.data.status === 'completed') {
+          navigate(`/interview/${id}/feedback`, { replace: true });
+          return;
+        }
+        setInterview(res.data);
       })
       .catch(() => {
         if (!cancelled) setError('Could not load this interview');
@@ -67,7 +85,7 @@ const InterviewSession = () => {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, navigate]);
 
   useEffect(() => {
     const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
@@ -90,6 +108,12 @@ const InterviewSession = () => {
   useEffect(() => {
     let cancelled = false;
 
+    // mediaDevices is undefined on non-HTTPS pages, so guard before calling it.
+    if (!navigator.mediaDevices?.getUserMedia) {
+      Promise.resolve().then(() => !cancelled && setCameraStatus('denied'));
+      return;
+    }
+
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: false })
       .then((stream) => {
@@ -98,28 +122,32 @@ const InterviewSession = () => {
           return;
         }
         streamRef.current = stream;
-        if (videoRef.current) videoRef.current.srcObject = stream;
         setCameraStatus('granted');
       })
       .catch(() => {
-        setCameraStatus('denied');
+        if (!cancelled) setCameraStatus('denied');
       });
 
     return () => {
       cancelled = true;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
       window.speechSynthesis?.cancel();
     };
   }, []);
 
+  // The <video> element only exists once the interview has loaded, which can be
+  // after the camera stream is ready, so attach the stream whenever either changes.
   useEffect(() => {
-    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognitionAPI) {
-      setSpeechSupported(false);
-      return;
+    if (videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
     }
+  }, [cameraStatus, interview]);
+
+  useEffect(() => {
+    if (!SpeechRecognitionAPI) return;
 
     const recognition = new SpeechRecognitionAPI();
     recognition.continuous = true;
@@ -135,21 +163,37 @@ const InterviewSession = () => {
       setAnswer(transcript);
     };
 
-    recognition.onerror = () => setListening(false);
+    recognition.onerror = (event) => {
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setMicError('Microphone access is blocked. Allow it in your browser settings, or type your answer instead.');
+      } else if (event.error === 'network') {
+        setMicError('Voice recognition lost its connection. You can try again or type your answer.');
+      }
+      setListening(false);
+    };
     recognition.onend = () => setListening(false);
 
     recognitionRef.current = recognition;
 
-    return () => recognition.stop();
+    return () => {
+      recognition.onend = null;
+      recognition.onerror = null;
+      recognition.abort();
+    };
   }, []);
 
   const startListening = () => {
-    if (!recognitionRef.current || listening) return;
+    if (!recognitionRef.current || listening || !mountedRef.current) return;
+    setMicError('');
     setAnswer('');
     speechStartRef.current = Date.now();
     resultTimestampsRef.current = [];
-    recognitionRef.current.start();
-    setListening(true);
+    try {
+      recognitionRef.current.start();
+      setListening(true);
+    } catch {
+      // start() throws if recognition is already running; that state is fine.
+    }
   };
 
   const stopListening = () => {
@@ -170,7 +214,7 @@ const InterviewSession = () => {
     const utterance = new SpeechSynthesisUtterance(lastQA.question);
     utterance.rate = 1;
 
-    setAiSpeaking(true);
+    utterance.onstart = () => setAiSpeaking(true);
     utterance.onend = () => {
       setAiSpeaking(false);
       if (speechSupported) startListening();
@@ -178,6 +222,8 @@ const InterviewSession = () => {
     utterance.onerror = () => setAiSpeaking(false);
 
     window.speechSynthesis.speak(utterance);
+    // startListening only reads refs and is meant to run once per new question.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [interview, speechSupported]);
 
   // Face detection loop — runs only while actively listening
@@ -406,6 +452,11 @@ const InterviewSession = () => {
               <div className="mb-3 px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-500 text-xs">
                 Voice input isn&apos;t supported in this browser — try Chrome. You can still type
                 your answer below.
+              </div>
+            )}
+            {micError && (
+              <div className="mb-3 px-4 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm">
+                {micError}
               </div>
             )}
             {listening && (

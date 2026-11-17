@@ -1,49 +1,52 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import api from '../api/axios';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import api, { refreshAccessToken } from '../api/axios';
 
 const AuthContext = createContext(null);
+const TOKEN_KEY = 'astravox_token';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('astravox_token');
-
-    if (!token) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLoading(false);
-      return;
-    }
     let cancelled = false;
 
-    api
-      .get('/auth/profile')
-      .then((res) => {
+    // The access token may be missing or expired after a reload; the refresh
+    // cookie gets a new one, so a returning user stays signed in for 7 days.
+    const restore = async () => {
+      try {
+        if (!localStorage.getItem(TOKEN_KEY)) await refreshAccessToken();
+        const res = await api.get('/auth/profile');
         if (!cancelled) setUser(res.data);
-      })
-      .catch(() => {
-        localStorage.removeItem('astravox_token');
+      } catch {
+        localStorage.removeItem(TOKEN_KEY);
         if (!cancelled) setUser(null);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    };
+    restore();
+
+    // Fired by the axios layer when a refresh fails mid-session.
+    const handleExpired = () => setUser(null);
+    window.addEventListener('astravox:session-expired', handleExpired);
 
     return () => {
       cancelled = true;
+      window.removeEventListener('astravox:session-expired', handleExpired);
     };
   }, []);
 
-  const login = (userData, token) => {
-    localStorage.setItem('astravox_token', token);
+  const login = useCallback((userData, token) => {
+    localStorage.setItem(TOKEN_KEY, token);
     setUser(userData);
-  };
+  }, []);
 
-  const logout = () => {
-    localStorage.removeItem('astravox_token');
+  const logout = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY);
     setUser(null);
-  };
+    api.post('/auth/logout').catch(() => {});
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, setUser, login, logout, loading }}>

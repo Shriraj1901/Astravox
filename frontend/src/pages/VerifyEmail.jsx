@@ -1,22 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api/axios';
 
 const VerifyEmail = () => {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
-  const [status, setStatus] = useState('verifying');
+  const [result, setResult] = useState(null);
+  const status = !token ? 'invalid' : result ?? 'verifying';
 
+  // The link is single-use: send it exactly once, even when StrictMode runs effects twice.
+  const sent = useRef(false);
   useEffect(() => {
-    if (!token) {
-      setStatus('invalid');
-      return;
-    }
+    if (!token || sent.current) return;
+    sent.current = true;
 
     api
-      .get(`/auth/verify-email?token=${token}`)
-      .then(() => setStatus('success'))
-      .catch(() => setStatus('error'));
+      .get('/auth/verify-email', { params: { token } })
+      .then(() => setResult('success'))
+      .catch(() => setResult('error'));
   }, [token]);
 
   return (

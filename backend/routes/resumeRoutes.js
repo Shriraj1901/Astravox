@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const { uploadResume, getResume, deleteResume } = require('../controllers/resumeController');
 const { protect } = require('../middleware/authMiddleware');
+const { aiLimiter } = require('../middleware/aiLimiter');
 
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -11,7 +12,7 @@ const upload = multer({
 
 const router = express.Router();
 
-router.post('/upload', protect, upload.single('resume'), uploadResume);
+router.post('/upload', protect, aiLimiter, upload.single('resume'), uploadResume);
 router.get('/', protect, getResume);
 router.delete('/', protect, deleteResume);
 

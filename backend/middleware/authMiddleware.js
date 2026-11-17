@@ -1,28 +1,34 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+// req.user is returned to the client by GET /auth/profile, so it must never
+// carry secrets (password hash, reset/verification tokens) or the resume text.
+const PUBLIC_USER_FIELDS =
+  '-password -resetPasswordToken -resetPasswordExpires -verificationToken -resume';
+
 const protect = async (req, res, next) => {
-  let token;
+  const header = req.headers.authorization;
 
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    try {
-      token = req.headers.authorization.split(' ')[1];
-
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      req.user = await User.findById(decoded.id).select('-password');
-
-      if (!req.user) {
-        return res.status(401).json({ message: 'User not found' });
-      }
-
-      next();
-    } catch (error) {
-      return res.status(401).json({ message: 'Not authorized, invalid token' });
-    }
-  } else {
+  if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ message: 'Not authorized, no token provided' });
   }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(header.split(' ')[1], process.env.JWT_SECRET);
+  } catch {
+    return res.status(401).json({ message: 'Not authorized, invalid token' });
+  }
+
+  // A database failure here is a 500 (via the error handler), not a 401 —
+  // otherwise a brief outage would log every user out.
+  req.user = await User.findById(decoded.id).select(PUBLIC_USER_FIELDS);
+
+  if (!req.user) {
+    return res.status(401).json({ message: 'User not found' });
+  }
+
+  next();
 };
 
 module.exports = { protect };

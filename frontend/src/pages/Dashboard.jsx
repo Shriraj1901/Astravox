@@ -73,13 +73,21 @@ const ActivityHeatmap = ({ countsByDay }) => {
 };
 
 const Dashboard = () => {
-  const { user, loading } = useAuth();
+  const { user, setUser, loading } = useAuth();
   const navigate = useNavigate();
   const [readiness, setReadiness] = useState(null);
   const [activity, setActivity] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
+
+    // Totals live on the user record; reload them so a just-finished interview shows up.
+    api
+      .get('/auth/profile')
+      .then((res) => {
+        if (!cancelled) setUser(res.data);
+      })
+      .catch(() => {});
 
     api
       .get('/interviews/readiness')
@@ -98,7 +106,7 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setUser]);
 
   if (loading) {
     return (

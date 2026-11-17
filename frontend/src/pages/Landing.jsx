@@ -86,15 +86,19 @@ const Landing = () => {
           Practice realistic, AI-driven mock interviews tailored to any company and role —
           and get honest feedback on exactly what to improve.
         </p>
-        <div className="flex items-center justify-center gap-4 mt-10">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-10">
           <Link
             to="/signup"
             className="px-6 py-3 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold transition"
           >
             Start Practicing
           </Link>
-          
-            
+          <a
+            href="#how-it-works"
+            className="px-6 py-3 rounded-lg border border-slate-700 hover:border-slate-500 text-slate-200 font-medium transition"
+          >
+            See how it works
+          </a>
         </div>
       </section>
 

@@ -39,22 +39,21 @@ const InterviewFeedback = () => {
 
   const [interview, setInterview] = useState(location.state?.interview || null);
   const [loading, setLoading] = useState(!location.state?.interview);
+  const [error, setError] = useState(false);
   const [revealed, setRevealed] = useState(false);
 
+  // Fetch only when the page was opened directly (e.g. a refresh) without data from the previous step.
   useEffect(() => {
-    if (interview) {
-      const t = setTimeout(() => setRevealed(true), 600);
-      return () => clearTimeout(t);
-    }
+    if (location.state?.interview) return;
 
     let cancelled = false;
     api
       .get(`/interviews/${id}`)
       .then((res) => {
-        if (!cancelled) {
-          setInterview(res.data);
-          setTimeout(() => setRevealed(true), 600);
-        }
+        if (!cancelled) setInterview(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -63,13 +62,53 @@ const InterviewFeedback = () => {
     return () => {
       cancelled = true;
     };
-  }, [id, interview]);
+  }, [id, location.state]);
 
-  if (loading || !interview) {
+  useEffect(() => {
+    if (!interview) return;
+    const t = setTimeout(() => setRevealed(true), 600);
+    return () => clearTimeout(t);
+  }, [interview]);
+
+  if (loading) {
     return (
-      <div className="min-h-[80vh] flex flex-col items-center justify-center gap-3">
+      <div className="min-h-[80vh] flex flex-col items-center justify-center gap-3" role="status">
         <div className="w-8 h-8 border-2 border-slate-700 border-t-cyan-400 rounded-full animate-spin" />
-        <p className="text-slate-400 text-sm">Analyzing your responses...</p>
+        <p className="text-slate-400 text-sm">Loading your feedback...</p>
+      </div>
+    );
+  }
+
+  // Not found, not yours, or the report was never generated (e.g. the AI call failed).
+  if (error || !interview || interview.feedback?.score == null) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center px-6">
+        <div className="text-center max-w-md">
+          <p className="text-white font-medium mb-2">No feedback available yet</p>
+          <p className="text-slate-400 text-sm mb-6">
+            {error
+              ? 'We could not load this interview.'
+              : 'This interview has no report. If you just finished it, try generating it again.'}
+          </p>
+          <div className="flex gap-3 justify-center">
+            {interview && interview.status === 'completed' && (
+              <button
+                onClick={() =>
+                  navigate(`/interview/${id}/completing`, { state: { interview } })
+                }
+                className="px-5 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold transition"
+              >
+                Generate Feedback
+              </button>
+            )}
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="px-5 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-medium transition"
+            >
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

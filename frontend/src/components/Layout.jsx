@@ -1,6 +1,7 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import api from '../api/axios';
 
 const navLinks = [
   { label: 'Dashboard', path: '/dashboard' },
@@ -9,10 +10,24 @@ const navLinks = [
 ];
 
 const Layout = () => {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [verifyMsg, setVerifyMsg] = useState('');
+
+  const isActive = (path) =>
+    location.pathname === path || location.pathname.startsWith(`${path}/`);
+
+  const resendVerification = async () => {
+    setVerifyMsg('Sending...');
+    try {
+      await api.post('/auth/resend-verification');
+      setVerifyMsg('Verification email sent. Check your inbox.');
+    } catch (err) {
+      setVerifyMsg(err.response?.data?.message || 'Could not send the email. Try again later.');
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -32,8 +47,9 @@ const Layout = () => {
               <Link
                 key={link.path}
                 to={link.path}
+                aria-current={isActive(link.path) ? 'page' : undefined}
                 className={`text-sm transition ${
-                  location.pathname === link.path
+                  isActive(link.path)
                     ? 'text-cyan-400'
                     : 'text-slate-400 hover:text-white'
                 }`}
@@ -53,6 +69,7 @@ const Layout = () => {
             className="md:hidden text-slate-300"
             onClick={() => setMenuOpen(!menuOpen)}
             aria-label="Toggle menu"
+            aria-expanded={menuOpen}
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               {menuOpen ? (
@@ -71,8 +88,9 @@ const Layout = () => {
                 key={link.path}
                 to={link.path}
                 onClick={() => setMenuOpen(false)}
+                aria-current={isActive(link.path) ? 'page' : undefined}
                 className={`text-sm ${
-                  location.pathname === link.path ? 'text-cyan-400' : 'text-slate-300'
+                  isActive(link.path) ? 'text-cyan-400' : 'text-slate-300'
                 }`}
               >
                 {link.label}
@@ -87,6 +105,17 @@ const Layout = () => {
           </nav>
         )}
       </header>
+
+      {user && user.isVerified === false && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-2 text-center text-sm text-amber-300">
+          Please verify your email address.{' '}
+          {verifyMsg || (
+            <button onClick={resendVerification} className="underline hover:text-amber-200">
+              Resend verification email
+            </button>
+          )}
+        </div>
+      )}
 
       <main>
         <Outlet />
